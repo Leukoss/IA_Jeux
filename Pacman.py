@@ -40,10 +40,12 @@ TBL = CreateArray([
 HAUTEUR = TBL.shape[1]
 LARGEUR = TBL.shape[0]
 
+mindset = "MANGER"
+
 
 # placements des pacgums et des fantômes
 
-def PlacementsGUM():  # placements des pacgums
+def PlacementsGUM():
     GUM = np.zeros(TBL.shape, dtype=np.int32)
 
     for x in range(LARGEUR):
@@ -80,42 +82,37 @@ timer = 0
 
 
 def IsCorner(x, y):
-    print("IsCorner")
     if (x == 1 and y == 1) or (x == 1 and y == 9) or (x == 18 and y == 1) or (x == 18 and y == 9):
-        print("True")
         return True
     else:
-        print("False")
         return False
 
 
 def EatGums():
-    global score
-    global timer
+    global score, timer
     x, y = PacManPos
+
     # Cas d'une SUPER-GUM !!!
     if GUM[x][y] == 1 and IsCorner(x, y):
         GUM[x][y] = 0
         score += 100
-        timer = 16
+        timer = 10
     elif GUM[x][y] == 1:
         GUM[x][y] = 0
         score += 100
 
 
-Ghosts = [[LARGEUR // 2, HAUTEUR // 2, "pink", "bas"], [LARGEUR // 2, HAUTEUR // 2, "orange", "bas"],
-          [LARGEUR // 2, HAUTEUR // 2, "cyan", "bas"], [LARGEUR // 2, HAUTEUR // 2, "red", "bas "]]
+Ghosts = [[LARGEUR // 2, HAUTEUR // 2, "pink", (0, 0)], [LARGEUR // 2, HAUTEUR // 2, "orange", (0, 0)],
+          [LARGEUR // 2, HAUTEUR // 2, "cyan", (0, 0)], [LARGEUR // 2, HAUTEUR // 2, "red", (0, 0)]]
 
 
 def PlacementsGhost():
     GHST = np.zeros(TBL.shape, dtype=np.int32)
 
-    # Pour chaque ligne
     for y in range(HAUTEUR):
-        # Pour chaque colonne de chauqe ligne
         for x in range(LARGEUR):
-            # Boolean pour savoir si la présence d'un fantôme sur la case est détectée
             ghost = False
+
             # Si la case actuelle est un mur ou la maison des fantômes alors cette case vaut une très grande valeur
             if TBL[x][y] == 1:
                 GHST[x][y] = 500
@@ -123,8 +120,7 @@ def PlacementsGhost():
                 GHST[x][y] = 100
     for F in Ghosts:
         # On récupère ses coordonnées
-        X = F[0]
-        Y = F[1]
+        X, Y = F[0], F[1]
         GHST[X][Y] = 0
     return GHST
 
@@ -344,14 +340,14 @@ def Collision():
     x, y = PacManPos
 
     for F in Ghosts:
-        if F[0] == x and F[1] == y and timer > 0:
-            score += 2000
+        Collision = (F[0] == x and F[1] == y)
+        if Collision and timer > 0:
             F[0], F[1] = LARGEUR // 2, HAUTEUR // 2
-        if F[0] == x and F[1] == y and timer == 0:
+            score += 2000
+        if Collision and timer == 0:
             COLL = True
     if COLL:
         PAUSE_FLAG = True
-
 
     return COLL
 
@@ -359,19 +355,18 @@ def Collision():
 def RefreshTimer():
     global timer
 
-    if timer > 0:
-        timer -= 1
+    if timer > 0: timer -= 1
 
 
 def IA():
-    global PacManPos, Ghosts, GHST, DIST
+    global PacManPos, Ghosts, GHST, DIST, mindset
     finish = 0
 
     mindset = "MANGER"
 
     x, y = PacManPos
 
-    if GHST[x][y] <= 3 and timer == 0: mindset = "FUITE"
+    if GHST[x][y] <= 4 and timer == 0: mindset = "FUITE"
     if timer != 0: mindset = "AGRESSIF"
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -390,21 +385,57 @@ def IA():
                 casedown = DIST[x][y + 1]
                 caseleft = DIST[x - 1][y]
                 caseright = DIST[x + 1][y]
-                # Si présence de Pacgum
+                # Présence de Pacgum ?
                 if GUM[x][y] == 1:
                     DIST[x][y] = 0
-                # Sinon
                 else:
-                    # Cas où c'est un mur
                     if DIST[x][y] >= 100:
                         continue
-                    # Cas entouré de murs/case à 100
                     if min(caseup, caseright, caseleft, casedown) == 100:
                         DIST[x][y] = 100
                         finish = 0
                     if min(caseup, caseright, caseleft, casedown) < 100:
                         if not (DIST[x][y] == min(caseup, caseright, caseleft, casedown) + 1):
                             DIST[x][y] = min(caseup, caseright, caseleft, casedown) + 1
+                            finish = 0
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    # Tableau GHST
+
+    finish = 0
+
+    while not finish:
+        finish = 1
+        # Pour chaque ligne (intérieur)
+        for y in range(1, 10):
+            # On balaye chaque colonne (intérieur)
+            for x in range(1, 19):
+                # Si 1 des 4 fantômes alors ⇒ fin directement en mettant à 0
+                ghost = 0
+                for F in Ghosts:
+                    X = F[0]
+                    Y = F[1]
+                    # Si présence de Fantômes
+                    if x == X and y == Y:
+                        GHST[x][y] = 0
+                        ghost = 1
+                # Les 4 cases adjacentes sont :
+                caseup = GHST[x][y - 1]
+                casedown = GHST[x][y + 1]
+                caseleft = GHST[x - 1][y]
+                caseright = GHST[x + 1][y]
+                # Cas sans fantôme
+                if not ghost:
+                    # Cas où la case est un mur
+                    if TBL[x][y] == 1:
+                        continue
+                    # Cas entouré de cases non balayées
+                    elif min(caseup, caseright, caseleft, casedown) == 100:
+                        continue
+                    elif min(caseup, caseright, caseleft, casedown) < 100:
+                        if GHST[x][y] != min(caseup, caseright, caseleft, casedown) + 1:
+                            GHST[x][y] = min(caseup, caseright, caseleft, casedown) + 1
                             finish = 0
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -458,51 +489,8 @@ def IA():
         PacManPos[0] += L[choix][0]
         PacManPos[1] += L[choix][1]
 
-    # Si PACMAN possède un super Pac-GUM alors on doit modifier Collision pour pouvoir prendre +2000 et balancer le
-    # Fantôme dans la maison
     if Collision():
         return
-
-    finish = 0
-
-    # ------------------------------------------------------------------------------------------------------------------
-
-    # # Tableau GHST
-
-    while not finish:
-        finish = 1
-        # Pour chaque ligne (intérieur)
-        for y in range(1, 10):
-            # On balaye chaque colonne (intérieur)
-            for x in range(1, 19):
-                # Si 1 des 4 fantômes alors ⇒ fin directement en mettant à 0
-                ghost = 0
-                for F in Ghosts:
-                    X = F[0]
-                    Y = F[1]
-                    # Si présence de Fantômes
-                    if x == X and y == Y:
-                        GHST[x][y] = 0
-                        ghost = 1
-                # Les 4 cases adjacentes sont :
-                caseup = GHST[x][y - 1]
-                casedown = GHST[x][y + 1]
-                caseleft = GHST[x - 1][y]
-                caseright = GHST[x + 1][y]
-                # Cas sans fantôme
-                if not ghost:
-                    # Cas où la case est un mur
-                    if TBL[x][y] == 1:
-                        continue
-                    # Cas entouré de cases non balayées
-                    elif min(caseup, caseright, caseleft, casedown) == 100:
-                        continue
-                    elif min(caseup, caseright, caseleft, casedown) < 100:
-                        if GHST[x][y] != min(caseup, caseright, caseleft, casedown) + 1:
-                            GHST[x][y] = min(caseup, caseright, caseleft, casedown) + 1
-                            finish = 0
-
-    # ------------------------------------------------------------------------------------------------------------------
 
     # Move GHOSTS
 
@@ -516,32 +504,22 @@ def IA():
             choix = random.randrange(len(L))
             F[0] += L[choix][0]
             F[1] += L[choix][1]
-            # On assigne la nouvelle direction en fonction du choix aléatoire :
-            # x + 1 => droite
-            if L[choix][0] == 1: F[3] = "droite"
-            # x - 1 => gauche
-            if L[choix][0] == -1: F[3] = "gauche"
-            # y + 1 => bas
-            if L[choix][1] == 1: F[3] = "bas"
-            # y - 1 => haut
-            if L[choix][1] == -1: F[3] = "haut"
-        elif F[3] == "haut":
-            F[1] -= 1
-        elif F[3] == "bas":
-            F[1] += 1
-        elif F[3] == "gauche":
-            F[0] -= 1
-        elif F[3] == "droite":
-            F[0] += 1
+            F[3] = L[choix]
+        else:
+            F[0] += F[3][0]
+            F[1] += F[3][1]
 
     if Collision():
         return
 
 
+# Définit la couleur de pacman en fonction de son état
 def PacManColor():
-    if timer > 0:
+    if mindset == "AGRESSIF":
         return "green"
-    else:
+    if mindset == "FUITE":
+        return "red"
+    if mindset == "MANGER":
         return "yellow"
 
 
@@ -552,10 +530,9 @@ def MainLoop():
     if not PAUSE_FLAG:
         PlacementsDIST()
         PlacementsGhost()
+        Affiche(PacmanColor=PacmanColor, message=("SCORE : " + PacmanColor), data1=GHST, data2=DIST)
         IA()
         EatGums()
-        Affiche(PacmanColor=PacmanColor, message=("SCORE : " + str(score)), data1=GHST, data2=DIST)
-        print("Timer is : " + str(timer))
         RefreshTimer()
 
 
