@@ -76,11 +76,29 @@ PacManPos = [5, 5]
 
 score = 0
 
+timer = 0
+
+
+def IsCorner(x, y):
+    print("IsCorner")
+    if (x == 1 and y == 1) or (x == 1 and y == 9) or (x == 18 and y == 1) or (x == 18 and y == 9):
+        print("True")
+        return True
+    else:
+        print("False")
+        return False
+
 
 def EatGums():
     global score
+    global timer
     x, y = PacManPos
-    if GUM[x][y] == 1:
+    # Cas d'une SUPER-GUM !!!
+    if GUM[x][y] == 1 and IsCorner(x, y):
+        GUM[x][y] = 0
+        score += 100
+        timer = 16
+    elif GUM[x][y] == 1:
         GUM[x][y] = 0
         score += 100
 
@@ -94,7 +112,7 @@ def PlacementsGhost():
 
     # Pour chaque ligne
     for y in range(HAUTEUR):
-        # Pour chaque colonne
+        # Pour chaque colonne de chauqe ligne
         for x in range(LARGEUR):
             # Boolean pour savoir si la présence d'un fantôme sur la case est détectée
             ghost = False
@@ -321,18 +339,44 @@ def GhostsPossibleMove(x, y):
 
 
 def Collision():
-    global PAUSE_FLAG
+    global PAUSE_FLAG, score
     COLL = False
     x, y = PacManPos
+
     for F in Ghosts:
-        if F[0] == x and F[1] == y: COLL = True
-    if COLL: PAUSE_FLAG = True
+        if F[0] == x and F[1] == y and timer > 0:
+            score += 2000
+            F[0], F[1] = LARGEUR // 2, HAUTEUR // 2
+        if F[0] == x and F[1] == y and timer == 0:
+            COLL = True
+    if COLL:
+        PAUSE_FLAG = True
+
+
     return COLL
+
+
+def RefreshTimer():
+    global timer
+
+    if timer > 0:
+        timer -= 1
 
 
 def IA():
     global PacManPos, Ghosts, GHST, DIST
     finish = 0
+
+    mindset = "MANGER"
+
+    x, y = PacManPos
+
+    if GHST[x][y] <= 3 and timer == 0: mindset = "FUITE"
+    if timer != 0: mindset = "AGRESSIF"
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    # Tableau DIST
 
     # Le temps que finish ne vaut pas 1, continue à balayer, car pas fini
     while not finish:
@@ -363,27 +407,67 @@ def IA():
                             DIST[x][y] = min(caseup, caseright, caseleft, casedown) + 1
                             finish = 0
 
-    # déplacement Pacman
+    # ------------------------------------------------------------------------------------------------------------------
+
+    # Move PACMAN
+
     L = PacManPossibleMove()
 
-    # Obtenir parmi la liste l'indice correspondant au mouvement menant à la case la plus proche d'une gum
-    x, y = PacManPos
-    lower_index = 0
-    current_value = DIST[PacManPos[0] + L[0][0], PacManPos[1] + L[0][1]]
+    # Cas où PACMAN doit se concentrer sur les gums car à l'abris du danger
+    if mindset == "MANGER":
+        # Obtenir parmi la liste l'indice correspondant au mouvement menant à la case la plus proche d'une gum
+        lower_index = 0
+        current_value = DIST[PacManPos[0] + L[0][0], PacManPos[1] + L[0][1]]
 
-    for i in range(1, len(L)):
-        new_value = DIST[PacManPos[0] + L[i][0], PacManPos[1] + L[i][1]]
-        if new_value < current_value:
-            current_value = new_value
-            lower_index = i
+        for i in range(1, len(L)):
+            new_value = DIST[PacManPos[0] + L[i][0], PacManPos[1] + L[i][1]]
+            if new_value < current_value:
+                current_value = new_value
+                lower_index = i
 
-    choix = lower_index
-    PacManPos[0] += L[choix][0]
-    PacManPos[1] += L[choix][1]
+        choix = lower_index
+        PacManPos[0] += L[choix][0]
+        PacManPos[1] += L[choix][1]
+    # Cas où PACMAN doit fuir !
+    if mindset == "FUITE":
+        bigger_index = 0
+        current_value = GHST[PacManPos[0] + L[0][0], PacManPos[1] + L[0][1]]
 
-    if Collision(): return
+        for i in range(1, len(L)):
+            new_value = GHST[PacManPos[0] + L[i][0], PacManPos[1] + L[i][1]]
+            # On cherche la case la plus éloignée d'un fantôme donc avec l'indice le plus élevé
+            if new_value > current_value:
+                current_value = new_value
+                bigger_index = i
+
+        choix = bigger_index
+        PacManPos[0] += L[choix][0]
+        PacManPos[1] += L[choix][1]
+    if mindset == "AGRESSIF":
+        lower_index = 0
+        current_value = GHST[PacManPos[0] + L[0][0], PacManPos[1] + L[0][1]]
+
+        for i in range(1, len(L)):
+            new_value = GHST[PacManPos[0] + L[i][0], PacManPos[1] + L[i][1]]
+            # On cherche la case la plus proche d'un fantôme donc avec l'indice le plus faible
+            if new_value < current_value and TBL[PacManPos[0] + L[i][0], PacManPos[1] + L[i][1]] != 2:
+                current_value = new_value
+                lower_index = i
+
+        choix = lower_index
+        PacManPos[0] += L[choix][0]
+        PacManPos[1] += L[choix][1]
+
+    # Si PACMAN possède un super Pac-GUM alors on doit modifier Collision pour pouvoir prendre +2000 et balancer le
+    # Fantôme dans la maison
+    if Collision():
+        return
 
     finish = 0
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    # # Tableau GHST
 
     while not finish:
         finish = 1
@@ -409,17 +493,19 @@ def IA():
                 if not ghost:
                     # Cas où la case est un mur
                     if TBL[x][y] == 1:
-                        continue  # tu avais mis: break erreur si il y a un mur tu arrete pas de parcourir le tableau
+                        continue
                     # Cas entouré de cases non balayées
                     elif min(caseup, caseright, caseleft, casedown) == 100:
-                        continue  # tu avais mis: finish = 0 c une erreur si l'entourage n'as pas d'element sup a 100 il faut faire aucune modif est si il y a que ces cas la c'est fini donc il faut surtout pas mettre de finish=0 ce qui reviendrait a dire que ces cas necessite un nouveau passage
+                        continue
                     elif min(caseup, caseright, caseleft, casedown) < 100:
-                        if GHST[x][y] != min(caseup, caseright, caseleft,
-                                             casedown) + 1:  # si element pas coherent par rapport a son entourage
+                        if GHST[x][y] != min(caseup, caseright, caseleft, casedown) + 1:
                             GHST[x][y] = min(caseup, caseright, caseleft, casedown) + 1
                             finish = 0
 
-    # déplacement Fantôme
+    # ------------------------------------------------------------------------------------------------------------------
+
+    # Move GHOSTS
+
     for F in Ghosts:
         L = GhostsPossibleMove(F[0], F[1])
         X = F[0]
@@ -448,18 +534,29 @@ def IA():
         elif F[3] == "droite":
             F[0] += 1
 
-    if Collision(): return
+    if Collision():
+        return
+
+
+def PacManColor():
+    if timer > 0:
+        return "green"
+    else:
+        return "yellow"
 
 
 #  Boucle principale de votre jeu appelée toutes les 500 ms
 
 def MainLoop():
+    PacmanColor = PacManColor()
     if not PAUSE_FLAG:
         PlacementsDIST()
         PlacementsGhost()
         IA()
         EatGums()
-        Affiche(PacmanColor="yellow", message=("SCORE : " + str(score)), data1=GHST, data2=DIST)
+        Affiche(PacmanColor=PacmanColor, message=("SCORE : " + str(score)), data1=GHST, data2=DIST)
+        print("Timer is : " + str(timer))
+        RefreshTimer()
 
 
 ###########################################:
